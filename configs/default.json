@@ -1,0 +1,36 @@
+{
+  "output_resolution": 512,
+  "latent_resolution": 64,
+  "latent_channels": 4,
+  "vae": {
+    "model_id": "stabilityai/sd-vae-ft-mse",
+    "pretrained": true,
+    "frozen": true,
+    "scaling_factor": 0.18215,
+    "note": "frozen compressor; only the latent diffusion model is trained here"
+  },
+  "unet": {
+    "base": 32,
+    "parameters": 1440000,
+    "attention": "single-head, coarsest resolution only (16x16 = 256 tokens)"
+  },
+  "diffusion": {
+    "timesteps": 1000,
+    "beta_start": 0.0001,
+    "beta_end": 0.02,
+    "objective": "epsilon prediction",
+    "sampler": "DDIM, 50 steps, eta 0"
+  },
+  "training": {
+    "batch_size": 4,
+    "learning_rate": 0.0001,
+    "optimiser": "AdamW, weight decay 1e-4",
+    "grad_clip": 1.0,
+    "images": 1542
+  },
+  "measured_cpu_2_cores": {
+    "train_step_seconds_batch4": 2.09,
+    "epoch_minutes": 13.4,
+    "ddim_50_steps_seconds_per_image": 10
+  }
+}

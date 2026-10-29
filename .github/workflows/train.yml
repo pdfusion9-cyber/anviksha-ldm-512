@@ -1,0 +1,100 @@
+name: train-ldm-512
+
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: "epochs to run in this job"
+        required: true
+        default: "20"
+      minutes:
+        description: "training time budget in minutes"
+        required: true
+        default: "240"
+      cache_run_id:
+        description: "optional: run id of a previous job whose latent cache artifact should be reused"
+        required: false
+        default: ""
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Restore latent cache
+        if: inputs.cache_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: latent-cache
+          path: runs/ldm
+          run-id: ${{ inputs.cache_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch images
+        run: python src/download_images.py --out data/raw
+
+      - name: Flatten images
+        run: |
+          python - <<'PY'
+          import shutil
+          from pathlib import Path
+          src, dst = Path("data/raw/data"), Path("data/images")
+          dst.mkdir(parents=True, exist_ok=True)
+          count = 0
+          for split in ("train", "valid"):
+              for path in sorted((src / split).rglob("*.jpg")):
+                  shutil.copy(path, dst / f"{split}_{path.parent.name}_{path.name}")
+                  count += 1
+          print(f"flattened {count} images")
+          PY
+
+      - name: Cache latents
+        if: inputs.cache_run_id == ''
+        run: python src/train.py --stage cache --data data/images --out runs/ldm --batch 4
+
+      - name: Upload latent cache
+        if: inputs.cache_run_id == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: latent-cache
+          path: |
+            runs/ldm/latents.npy
+            runs/ldm/latents.json
+          retention-days: 30
+
+      - name: Train
+        run: |
+          SECONDS_BUDGET=$(( ${{ inputs.minutes }} * 60 ))
+          python src/train.py --stage train --out runs/ldm \
+            --epochs ${{ inputs.epochs }} --batch 4 --base 32 --threads 2 \
+            --time-budget $SECONDS_BUDGET
+
+      - name: Sample
+        if: always()
+        run: |
+          if [ -f runs/ldm/ldm.pt ]; then
+            python src/sample.py --checkpoint runs/ldm/ldm.pt --count 2 --steps 30 --out samples || true
+          fi
+
+      - name: Upload checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: ldm-checkpoint
+          path: |
+            runs/ldm/ldm.pt
+            runs/ldm/metrics.json
+            samples/*.png
+          retention-days: 30

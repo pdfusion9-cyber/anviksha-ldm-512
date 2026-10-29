@@ -1,0 +1,9 @@
+torch>=2.1
+numpy>=1.24
+pillow>=10.0
+diffusers>=0.27
+transformers>=4.38
+accelerate>=0.26
+imageio>=2.34
+imageio-ffmpeg>=0.5
+gradio>=4.44
